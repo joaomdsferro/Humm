@@ -1,40 +1,60 @@
 # Humm
 
-Forked from [Typr](https://github.com/albertshiney/typr), Humm is the repo where I will continue to work on the project with my own vision :)
+Forked from [Typr](https://github.com/albertshiney/typr), Humm is a Tauri 2 desktop dictation app.
 
-## Usage
+Press a global hotkey, record mic audio, transcribe (local Whisper sidecar or Groq cloud), and auto-paste into the focused window.
 
-Prerequisites:
+## Package Manager
 
-- Node.js (v18+ recommended) and `npm` or `pnpm`
-- Rust toolchain (for the Tauri backend): `rustup`, `cargo`
-- libssl, libgtk (typical Linux desktop deps) — install via your distro package manager
+Use `pnpm` (not `npm`).
 
-Run (development):
+## Prerequisites
 
-1. Install JavaScript dependencies:
+- Node.js (v18+ recommended)
+- `pnpm` (project uses `pnpm@10.33.2`)
+- Rust toolchain (`rustup`, `cargo`)
+- Linux desktop dependencies (such as OpenSSL/GTK), installed via your distro package manager
 
-	`npm install`
+## Development
 
-2. Run the frontend dev server and Tauri backend (two terminals):
+Install dependencies:
 
-	Terminal 1 (frontend):
+```bash
+pnpm install
+```
 
-	`npm run dev`
+Run in development with two terminals:
 
-	Terminal 2 (Tauri backend + app):
+Terminal 1 (frontend):
 
-	`cargo build`  # first-time build for native binaries
-	`npm run tauri dev`
+```bash
+pnpm dev
+```
 
-Build (production):
+Terminal 2 (Tauri backend + app window):
 
-1. Build the web assets and native app:
+```bash
+pnpm tauri dev
+```
 
-	`npm run build`
-	`npm run tauri build`
+## Build
 
-Notes:
+Build web assets:
 
-- This project was developed on Linux (CachyOS/Arch). It should work on other Linux distributions but may require installing additional system libraries.
-- If you need local speech binaries, see `src-tauri/binaries/` for included helper binaries.
+```bash
+pnpm run build
+```
+
+Build native binary:
+
+```bash
+pnpm tauri build
+```
+
+Binary output: `src-tauri/target/release/Humm`
+
+## Notes
+
+- Linux is a supported platform in this fork.
+- Linux paste support requires `wl-copy` and `wtype` (preferred), or `ydotool`/`ydotoold`.
+- The whisper sidecar binary must exist at `src-tauri/binaries/whisper-cpp-x86_64-unknown-linux-gnu` before building on Linux.

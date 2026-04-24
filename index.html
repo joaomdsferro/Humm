@@ -50,7 +50,7 @@
           </a>
         </nav>
         <div class="sidebar-footer">
-          <span class="version-text">v0.1.0</span>
+          <span class="version-text">v0.1.1</span>
         </div>
       </aside>
 
@@ -68,6 +68,15 @@
               </div>
               <div class="setting-control">
                 <select id="mic-select"></select>
+              </div>
+            </div>
+            <div class="setting-row">
+              <div class="setting-label">
+                <span class="label-text">Language</span>
+                <span class="label-hint">Language spoken during recording</span>
+              </div>
+              <div class="setting-control">
+                <select id="language-select"></select>
               </div>
             </div>
           </div>
@@ -99,6 +108,8 @@
               <div class="setting-control">
                 <div class="model-row">
                   <select id="model-select">
+                    <option value="tiny">Tiny (~75 MB) — fastest</option>
+                    <option value="base">Base (~142 MB)</option>
                     <option value="small">Small (~466 MB)</option>
                     <option value="medium">Medium (~1.5 GB)</option>
                   </select>
@@ -145,7 +156,10 @@
                 <span class="label-hint">Global keyboard shortcut to trigger recording</span>
               </div>
               <div class="setting-control">
-                <kbd id="hotkey-text">Cmd+Shift+D</kbd>
+                <div class="hotkey-control">
+                  <kbd id="hotkey-text">Cmd+Shift+Space</kbd>
+                  <button id="hotkey-change-btn" class="btn-secondary">Change</button>
+                </div>
               </div>
             </div>
           </div>

@@ -459,6 +459,41 @@ kbd {
   letter-spacing: 0.02em;
 }
 
+/* ── Hotkey Control ─────────────────────────────────── */
+
+.hotkey-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn-secondary {
+  padding: 5px 12px;
+  background: var(--surface);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  font-family: var(--font);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--transition);
+  white-space: nowrap;
+}
+
+.btn-secondary:hover {
+  color: var(--text);
+  background: var(--surface-hover);
+}
+
+kbd.capturing {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-subtle);
+  color: var(--accent);
+  min-width: 140px;
+  text-align: center;
+}
+
 /* ── Utility ────────────────────────────────────────── */
 
 .hidden {

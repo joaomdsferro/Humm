@@ -5,11 +5,11 @@ use std::sync::Mutex;
 use tauri::{Manager, State, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 
-use typr_lib::audio;
-use typr_lib::downloader;
-use typr_lib::recorder::{Recorder, RecordingState};
-use typr_lib::settings::Settings;
-use typr_lib::transcribe_local;
+use humm_lib::audio;
+use humm_lib::downloader;
+use humm_lib::recorder::{Recorder, RecordingState, OVERLAY_WINDOW_TITLE};
+use humm_lib::settings::Settings;
+use humm_lib::transcribe_local;
 
 struct AppState {
     recorder: Recorder,
@@ -20,7 +20,7 @@ struct AppState {
 fn get_app_dir() -> PathBuf {
     dirs::config_dir()
         .unwrap_or_else(|| PathBuf::from("."))
-        .join("com.typr.app")
+        .join("com.Humm.app")
 }
 
 #[tauri::command]
@@ -120,25 +120,27 @@ fn main() {
             toggle_recording,
         ])
         .setup(move |app| {
-            // Create the overlay window (small mic icon, top-right, always on top)
+            // Overlay window stays mapped for the entire app lifetime so it
+            // never steals focus. Visual state is controlled via CSS opacity.
             let monitor = app.primary_monitor().ok().flatten();
-            let (x, y) = if let Some(m) = monitor {
+            let (x, y) = if let Some(m) = &monitor {
                 let size = m.size();
                 let scale = m.scale_factor();
                 let logical_w = size.width as f64 / scale;
-                ((logical_w - 60.0) as i32, 10_i32)
+                (logical_w - 220.0, 50.0)
             } else {
-                (1380, 10)
+                (1380.0, 50.0)
             };
+            println!("[Humm] Overlay target position: ({}, {})", x, y);
 
             let overlay = WebviewWindowBuilder::new(
                 app,
                 "overlay",
                 WebviewUrl::App("src/overlay.html".into()),
             )
-            .title("")
-            .inner_size(50.0, 50.0)
-            .position(x as f64, y as f64)
+            .title(OVERLAY_WINDOW_TITLE)
+            .inner_size(170.0, 44.0)
+            .position(x, y)
             .resizable(false)
             .decorations(false)
             .transparent(true)
@@ -149,22 +151,65 @@ fn main() {
             .build();
 
             match overlay {
-                Ok(_) => println!("[Typr] Overlay window created"),
-                Err(e) => eprintln!("[Typr] Failed to create overlay: {}", e),
+                Ok(win) => {
+                    println!("[Humm] Overlay window created");
+                    let _ = win.set_focusable(false);
+                    #[cfg(not(target_os = "linux"))]
+                    let _ = win.set_ignore_cursor_events(true);
+
+                    // On Linux, start hidden so that show() in start_recording triggers
+                    // a real Wayland map event and the compositor assigns a position.
+                    // On other platforms keep always-visible (opacity controls visibility).
+                    #[cfg(target_os = "linux")]
+                    {
+                        let hide_res = win.hide();
+                        println!("[Humm] Overlay hidden at startup (Linux): {:?}", hide_res);
+
+                        // Hyprland: inject windowrulev2 rules so the overlay floats,
+                        // pins to all workspaces (always-on-top), never steals focus,
+                        // and appears at the top-right corner of whichever monitor it maps on.
+                        // Coordinates are monitor-relative logical pixels.
+                        if std::env::var("HYPRLAND_INSTANCE_SIGNATURE").is_ok() {
+                            let t = OVERLAY_WINDOW_TITLE;
+                            let rules = [
+                                format!("float, title:{t}"),
+                                format!("pin, title:{t}"),
+                                format!("noinitialfocus, title:{t}"),
+                                format!("move {} 50, title:{t}", x as i32),
+                            ];
+                            for rule in &rules {
+                                let ok = std::process::Command::new("hyprctl")
+                                    .args(["keyword", "windowrulev2", rule])
+                                    .output()
+                                    .map(|o| o.status.success())
+                                    .unwrap_or(false);
+                                println!("[Humm] Hyprland rule '{rule}': ok={ok}");
+                            }
+                        }
+                    }
+
+                    if let Ok(pos) = win.outer_position() {
+                        println!("[Humm] Overlay actual position: ({}, {})", pos.x, pos.y);
+                    }
+                    if let Ok(sz) = win.outer_size() {
+                        println!("[Humm] Overlay actual size: {}x{}", sz.width, sz.height);
+                    }
+                }
+                Err(e) => eprintln!("[Humm] Failed to create overlay: {}", e),
             }
 
             let handle = app.handle().clone();
 
-            println!("[Typr] Registering global shortcut: {}", initial_hotkey);
+            println!("[Humm] Registering global shortcut: {}", initial_hotkey);
 
             match app.global_shortcut().on_shortcut(
                 initial_hotkey.as_str(),
                 move |_app, shortcut, event| {
-                    println!("[Typr] Hotkey event: {:?} state={:?}", shortcut, event.state);
+                    println!("[Humm] Hotkey event: {:?} state={:?}", shortcut, event.state);
                     let handle = handle.clone();
                     let state = handle.state::<AppState>();
                     let mode = state.settings.lock().unwrap().recording_mode.clone();
-                    println!("[Typr] Recording mode: {}", mode);
+                    println!("[Humm] Recording mode: {}", mode);
 
                     match event.state {
                         ShortcutState::Pressed => {
@@ -172,15 +217,15 @@ fn main() {
                                 let state = handle.state::<AppState>();
                                 match mode.as_str() {
                                     "toggle" => {
-                                        println!("[Typr] Toggle mode: calling do_toggle_recording");
+                                        println!("[Humm] Toggle mode: calling do_toggle_recording");
                                         match do_toggle_recording(&handle, state.inner()).await {
-                                            Ok(result) => println!("[Typr] Toggle result: {}", result),
-                                            Err(e) => eprintln!("[Typr] Toggle error: {}", e),
+                                            Ok(result) => println!("[Humm] Toggle result: {}", result),
+                                            Err(e) => eprintln!("[Humm] Toggle error: {}", e),
                                         }
                                     }
                                     "push-to-talk" => {
                                         let current = state.recorder.get_state();
-                                        println!("[Typr] PTT mode, current state: {:?}", current);
+                                        println!("[Humm] PTT mode, current state: {:?}", current);
                                         if current == RecordingState::Ready {
                                             let mic = state
                                                 .settings
@@ -189,8 +234,8 @@ fn main() {
                                                 .microphone
                                                 .clone();
                                             match state.recorder.start_recording(&handle, &mic) {
-                                                Ok(_) => println!("[Typr] Recording started"),
-                                                Err(e) => eprintln!("[Typr] Start recording error: {}", e),
+                                                Ok(_) => println!("[Humm] Recording started"),
+                                                Err(e) => eprintln!("[Humm] Start recording error: {}", e),
                                             }
                                         }
                                     }
@@ -211,8 +256,8 @@ fn main() {
                                             &settings,
                                             &state.app_dir,
                                         ).await {
-                                            Ok(result) => println!("[Typr] Transcription: {}", result),
-                                            Err(e) => eprintln!("[Typr] Transcription error: {}", e),
+                                            Ok(result) => println!("[Humm] Transcription: {}", result),
+                                            Err(e) => eprintln!("[Humm] Transcription error: {}", e),
                                         }
                                     }
                                 });
@@ -221,8 +266,8 @@ fn main() {
                     }
                 },
             ) {
-                Ok(_) => println!("[Typr] Global shortcut registered successfully"),
-                Err(e) => eprintln!("[Typr] ERROR: Failed to register global shortcut: {}", e),
+                Ok(_) => println!("[Humm] Global shortcut registered successfully"),
+                Err(e) => eprintln!("[Humm] ERROR: Failed to register global shortcut: {}", e),
             }
 
             Ok(())

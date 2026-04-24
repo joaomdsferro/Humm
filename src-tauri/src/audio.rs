@@ -9,17 +9,21 @@ pub struct MicDevice {
     pub is_default: bool,
 }
 
+fn device_name(device: &cpal::Device) -> Option<String> {
+    device.description().ok().map(|desc| desc.name().to_string())
+}
+
 pub fn list_microphones() -> Vec<MicDevice> {
     let host = cpal::default_host();
     let default_name = host
         .default_input_device()
-        .and_then(|d| d.name().ok())
+        .and_then(|d| device_name(&d))
         .unwrap_or_default();
 
     let mut devices = Vec::new();
     if let Ok(input_devices) = host.input_devices() {
         for device in input_devices {
-            if let Ok(name) = device.name() {
+            if let Some(name) = device_name(&device) {
                 devices.push(MicDevice {
                     is_default: name == default_name,
                     name,
@@ -66,7 +70,7 @@ impl AudioRecorder {
         } else {
             host.input_devices()
                 .map_err(|e| e.to_string())?
-                .find(|d| d.name().map(|n| n == mic_name).unwrap_or(false))
+                .find(|d| device_name(d).is_some_and(|name| name == mic_name))
                 .ok_or(format!("Microphone '{}' not found", mic_name))?
         };
 
@@ -75,17 +79,17 @@ impl AudioRecorder {
             .default_input_config()
             .map_err(|e| format!("Failed to get default input config: {}", e))?;
 
-        let sample_rate = default_config.sample_rate().0;
+        let sample_rate = default_config.sample_rate();
         let channels = default_config.channels();
 
-        println!("[Typr] Mic config: {}Hz, {} channels", sample_rate, channels);
+        println!("[Humm] Mic config: {}Hz, {} channels", sample_rate, channels);
 
         self.source_sample_rate = sample_rate;
         self.source_channels = channels;
 
         let config = cpal::StreamConfig {
             channels,
-            sample_rate: cpal::SampleRate(sample_rate),
+            sample_rate,
             buffer_size: cpal::BufferSize::Default,
         };
 
@@ -98,7 +102,7 @@ impl AudioRecorder {
                     buf.extend_from_slice(data);
                 },
                 |err| {
-                    eprintln!("[Typr] Audio stream error: {}", err);
+                    eprintln!("[Humm] Audio stream error: {}", err);
                 },
                 None,
             )
@@ -106,20 +110,20 @@ impl AudioRecorder {
 
         stream.play().map_err(|e| e.to_string())?;
         self.stream = Some(SendStream(stream));
-        println!("[Typr] Audio recording started");
+        println!("[Humm] Audio recording started");
         Ok(())
     }
 
     pub fn stop_and_save(&mut self, output_path: &PathBuf) -> Result<PathBuf, String> {
         self.stream = None; // Drop stops the stream
-        println!("[Typr] Audio recording stopped");
+        println!("[Humm] Audio recording stopped");
 
         let samples = self.samples.lock().unwrap();
         if samples.is_empty() {
             return Err("No audio captured".to_string());
         }
 
-        println!("[Typr] Captured {} raw samples", samples.len());
+        println!("[Humm] Captured {} raw samples", samples.len());
 
         // Convert to mono if multi-channel
         let mono: Vec<f32> = if self.source_channels > 1 {
@@ -133,7 +137,7 @@ impl AudioRecorder {
 
         // Downsample to 16kHz for whisper.cpp
         let resampled = resample(&mono, self.source_sample_rate, 16000);
-        println!("[Typr] Resampled to {} samples at 16kHz", resampled.len());
+        println!("[Humm] Resampled to {} samples at 16kHz", resampled.len());
 
         let spec = WavSpec {
             channels: 1,
@@ -152,7 +156,7 @@ impl AudioRecorder {
         drop(samples);
         self.samples.lock().unwrap().clear();
 
-        println!("[Typr] WAV saved to {:?}", output_path);
+        println!("[Humm] WAV saved to {:?}", output_path);
         Ok(output_path.clone())
     }
 }

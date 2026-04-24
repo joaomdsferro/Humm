@@ -11,7 +11,7 @@ pub async fn transcribe_local(
         return Err("Whisper model not found. Please download a model first.".to_string());
     }
 
-    println!("[Typr] Running whisper.cpp sidecar with model {:?}", model_path);
+    println!("[Humm] Running whisper.cpp sidecar with model {:?}", model_path);
 
     let output = app
         .shell()
@@ -36,7 +36,7 @@ pub async fn transcribe_local(
     }
 
     let text = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    println!("[Typr] Whisper output: {}", text);
+    println!("[Humm] Whisper output: {}", text);
     Ok(text)
 }
 

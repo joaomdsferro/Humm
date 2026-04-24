@@ -3,66 +3,109 @@
   <head>
     <meta charset="UTF-8" />
     <style>
-      * { margin: 0; padding: 0; }
-      html, body {
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html {
+        background: transparent;
+      }
+      body {
         background: transparent;
         overflow: hidden;
         user-select: none;
         -webkit-user-select: none;
-      }
-      body {
+        width: 170px;
+        height: 44px;
         display: flex;
         align-items: center;
-        justify-content: center;
-        height: 100vh;
+        justify-content: flex-end;
+        padding: 4px;
       }
-      .mic {
-        width: 40px;
-        height: 40px;
+
+      .pill {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        padding: 0 14px;
+        height: 34px;
+        border-radius: 17px;
+        background: rgba(22, 22, 22, 0.96);
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+        color: #c8ccd1;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+        font-size: 12px;
+        font-weight: 500;
+        letter-spacing: 0.02em;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.15s ease, background 0.25s ease, color 0.25s ease, border-color 0.25s ease;
+      }
+
+      .dot {
+        width: 9px;
+        height: 9px;
         border-radius: 50%;
-        background: rgba(30, 30, 30, 0.85);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        backdrop-filter: blur(10px);
-        -webkit-backdrop-filter: blur(10px);
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        transition: all 0.3s ease;
+        flex-shrink: 0;
+        background: #6b7075;
+        transition: background 0.25s ease, box-shadow 0.25s ease;
       }
-      .mic svg {
-        width: 18px;
-        height: 18px;
-        fill: #888;
-        transition: fill 0.3s ease;
-      }
-      .mic.recording {
-        background: rgba(244, 67, 54, 0.9);
-        border-color: rgba(244, 67, 54, 0.5);
+
+      .pill.recording {
+        opacity: 1;
+        background: rgba(198, 40, 40, 0.96);
+        border-color: rgba(255, 120, 120, 0.5);
+        color: #fff;
         animation: pulse 1.2s ease-in-out infinite;
       }
-      .mic.recording svg {
-        fill: #fff;
+      .pill.recording .dot {
+        background: #fff;
+        box-shadow: 0 0 8px rgba(255, 255, 255, 0.9);
       }
-      .mic.transcribing {
-        background: rgba(255, 152, 0, 0.9);
-        border-color: rgba(255, 152, 0, 0.5);
-        animation: pulse 1.5s ease-in-out infinite;
+
+      .pill.transcribing {
+        opacity: 1;
+        background: rgba(230, 81, 0, 0.96);
+        border-color: rgba(255, 183, 77, 0.5);
+        color: #fff;
       }
-      .mic.transcribing svg {
-        fill: #fff;
+      .pill.transcribing .dot {
+        background: transparent;
+        border: 2px solid #fff;
+        border-top-color: transparent;
+        animation: spin 0.9s linear infinite;
       }
+
       @keyframes pulse {
-        0%, 100% { transform: scale(1); opacity: 1; }
-        50% { transform: scale(1.15); opacity: 0.8; }
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.78; }
+      }
+      @keyframes spin {
+        to { transform: rotate(360deg); }
       }
     </style>
   </head>
   <body>
-    <div class="mic" id="mic">
-      <svg viewBox="0 0 24 24">
-        <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm-1-9c0-.55.45-1 1-1s1 .45 1 1v6c0 .55-.45 1-1 1s-1-.45-1-1V5z"/>
-        <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/>
-      </svg>
+    <div class="pill" id="pill">
+      <div class="dot" id="dot"></div>
+      <span id="label">Ready</span>
     </div>
+    <script>
+      const pill = document.getElementById('pill');
+      const label = document.getElementById('label');
+
+      window.__setState = function(state) {
+        pill.className = 'pill';
+        if (state === 'recording') {
+          pill.classList.add('recording');
+          label.textContent = 'Recording';
+        } else if (state === 'transcribing') {
+          pill.classList.add('transcribing');
+          label.textContent = 'Transcribing';
+        } else {
+          label.textContent = 'Ready';
+        }
+      };
+
+      console.log('[Humm overlay] loaded');
+    </script>
   </body>
 </html>

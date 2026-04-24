@@ -1,6 +1,6 @@
 # Humm
 
-Forked from [Humm](https://github.com/albertshiney/typr), Humm is the repo where I will continue to work on the project with my own vision :)
+Forked from [Typr](https://github.com/albertshiney/typr), Humm is the repo where I will continue to work on the project with my own vision :)
 
 ## Usage
 

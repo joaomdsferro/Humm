@@ -1,132 +1,102 @@
-# Humm -- Local Dictation App
+# Humm -- Dictation App Design (Current)
 
 ## Overview
 
-Humm is a minimal, cross-platform (macOS + Windows) dictation app built with Tauri. It captures audio via a global hotkey, transcribes it using either a local whisper.cpp sidecar or Groq's cloud Whisper API, applies basic text cleanup, and auto-pastes the result into the currently focused application.
+Humm is a minimal Tauri 2 desktop dictation app. It captures microphone audio via global hotkey, transcribes using either a local whisper.cpp sidecar or Groq cloud Whisper, performs lightweight cleanup, and auto-pastes into the currently focused app.
 
 Personal-use tool. No accounts, no cloud sync, no history.
 
 ## Architecture
 
-```
-┌─────────────────────────────────┐
-│  Tauri App                      │
-│  ┌───────────┐  ┌────────────┐  │
-│  │ Frontend   │  │ Rust       │  │
-│  │ (Vite +   │◄►│ Backend    │  │
-│  │  vanilla   │  │            │  │
-│  │  TS)       │  └─────┬──────┘ │
-│  └───────────┘        │        │
-│              ┌────────┴───────┐ │
-│              │                │ │
-│        ┌─────▼─────┐  ┌──────▼──┐
-│        │whisper.cpp │  │ Groq    │
-│        │ sidecar    │  │ REST API│
-│        └───────────┘  └─────────┘
-└─────────────────────────────────┘
-```
+### Runtime Model
 
-### Components
+- Frontend: Vite + vanilla TypeScript settings window
+- Backend: Rust orchestration and platform integration
+- Overlay: separate always-on-top status pill window
+- Transcription backends: local whisper.cpp sidecar or Groq REST API
 
-**Rust Backend** -- core logic layer:
-- Global hotkey registration and listening
-- Audio capture from selected microphone via `cpal` crate
-- Spawning whisper.cpp sidecar process and piping audio
-- Calling Groq REST API for cloud transcription
-- Basic text cleanup post-processing
-- Simulated keyboard input via `enigo` crate for auto-paste
-- Settings persistence (JSON file)
-- Model download management (HTTP download from Hugging Face)
+### Backend Modules
 
-**Frontend (Vite + vanilla TypeScript)** -- single-page settings UI:
-- Recording status indicator
-- Settings controls
-- Model download UI with progress bar
-
-**whisper.cpp Sidecar** -- bundled pre-built binary:
-- Receives WAV audio input
-- Returns transcribed text
-- Supports small and medium model sizes
+- `main.rs`: Tauri entrypoint, command handlers, global hotkey wiring, overlay creation
+- `recorder.rs`: state machine (`Ready -> Recording -> Transcribing -> Ready`) and orchestration
+- `audio.rs`: audio capture (`cpal`) + WAV writing (`hound`)
+- `transcribe_local.rs`: whisper.cpp sidecar invocation
+- `transcribe_groq.rs`: Groq Whisper HTTP transcription
+- `paste.rs`: platform-specific paste implementation
+- `cleanup.rs`: post-transcription cleanup
+- `settings.rs`: persisted config JSON in app config directory
+- `downloader.rs`: model downloads with progress events
 
 ## Recording Flow
 
-1. User presses global hotkey (default: `Cmd+Shift+D` on Mac, `Ctrl+Shift+D` on Windows)
-2. Rust backend starts capturing audio from selected microphone via `cpal`
-3. Recording status indicator updates to "Recording..."
-4. Recording stops when:
-   - **Toggle mode:** user presses hotkey again
-   - **Push-to-talk mode:** user releases the hotkey
-5. Audio is saved as a temporary WAV file
-6. Status updates to "Transcribing..."
-7. Backend routes audio to whisper.cpp sidecar or Groq API based on current engine setting
-8. Transcription text is returned
-9. Basic text cleanup runs
-10. Text is typed into the focused application via simulated keyboard input (`enigo`)
-11. Status returns to "Ready"
-12. Temporary WAV file is deleted
+1. User triggers the configured global hotkey.
+2. App enters `Recording` and captures mic audio.
+3. User stops recording (toggle mode: hotkey press; push-to-talk: release).
+4. App saves temporary WAV and enters `Transcribing`.
+5. Engine routing:
+   - `local`: whisper.cpp sidecar with selected local model
+   - `cloud`: Groq Whisper API with user API key
+6. Raw text is cleaned.
+7. App returns to `Ready` and auto-pastes cleaned text if non-empty.
+8. Temporary WAV is removed.
 
 ## Transcription Engines
 
-### Local: whisper.cpp Sidecar
+### Local (whisper.cpp sidecar)
 
-- Pre-built whisper.cpp binary bundled as a Tauri sidecar
-- Separate binaries for macOS (arm64, x86_64) and Windows (x86_64)
-- Supports two model sizes:
-  - **Small** (~466 MB) -- faster, slightly less accurate
-  - **Medium** (~1.5 GB) -- slower, more accurate
-- Models stored in Tauri app data directory
-- Models downloaded in-app: user clicks "Download" button next to model selector, progress bar shows download progress
-- On first launch, if no model exists, the app prompts the user to download one before local transcription can be used
+- Bundled Linux sidecar binary expected at `src-tauri/binaries/whisper-cpp-x86_64-unknown-linux-gnu` for Linux builds
+- Model files stored in app config directory as `ggml-{size}.bin`
+- Supported model names in settings: `tiny`, `base`, `small`, `medium`, `large`
+- Model download emits frontend progress events
 
-### Cloud: Groq Whisper API
+### Cloud (Groq Whisper)
 
-- REST API call to Groq's Whisper endpoint
-- Requires user-provided API key (entered in settings)
-- Sends WAV audio as multipart form data
-- Returns transcription text
+- Uses Groq API (`whisper-large-v3-turbo`)
+- Requires user-provided API key
+- Uploads recorded WAV as multipart form data
 
 ## Text Cleanup
 
-Post-processing runs in the Rust backend after transcription, before pasting:
+Runs after transcription and before paste:
 
-1. Trim leading and trailing whitespace
-2. Normalize multiple consecutive spaces into a single space
-3. Capitalize the first letter of each sentence
-4. Ensure ending punctuation (add period if missing)
+1. Trim surrounding whitespace
+2. Normalize repeated spaces
+3. Capitalize sentence starts
+4. Ensure terminal punctuation
 
-No LLM processing. No filler word removal.
+No LLM post-processing.
 
 ## Auto-Paste
 
-Uses the `enigo` crate on both macOS and Windows. After cleanup, the transcribed text is placed on the clipboard and a Cmd+V / Ctrl+V keystroke is simulated to paste it into the focused application. This is more reliable and faster than typing character-by-character.
+Platform-specific paste path:
+
+- macOS: `osascript`
+- Windows: `enigo`
+- Linux: `wl-copy` + `wtype` (fallback: `ydotool`)
 
 ## Frontend UI
 
-Single-page layout built with Vite + vanilla TypeScript.
+Single-page settings window with:
 
-### Top Section
-- Recording status indicator: "Ready" (green dot), "Recording..." (red pulsing dot), "Transcribing..." (yellow dot)
+- Recording state indicator (`Ready`, `Recording`, `Transcribing`)
+- Microphone selection
+- Engine selection (local/cloud)
+- Local model selection + download progress
+- Groq API key input
+- Recording mode (`toggle` / `push-to-talk`)
+- Hotkey capture and save
 
-### Settings Section
-- **Microphone** -- dropdown of available input devices (populated from backend)
-- **Engine** -- toggle between "Local Whisper" and "Groq Cloud"
-- **Model size** -- dropdown: Small / Medium (visible only when engine is Local)
-  - "Download" button next to selector with inline progress bar
-  - Checkmark shown if model is already downloaded
-- **Groq API key** -- text input (visible only when engine is Cloud)
-- **Recording mode** -- toggle: "Toggle" / "Push-to-talk"
-- **Hotkey** -- displays current hotkey, click to rebind
-
-### Styling
-- Clean, minimal design
-- Light/dark follows system preference
-- Small fixed-size window
+Overlay window (`src/overlay.html`) shows lightweight recording/transcribing state outside the main settings window.
 
 ## Settings Storage
 
-JSON file stored in the Tauri app data directory (platform-specific):
+JSON file path:
+
+- Linux: `~/.config/com.Humm.app/config.json`
 - macOS: `~/Library/Application Support/com.Humm.app/config.json`
 - Windows: `%APPDATA%/com.Humm.app/config.json`
+
+Example:
 
 ```json
 {
@@ -135,40 +105,19 @@ JSON file stored in the Tauri app data directory (platform-specific):
   "whisperModel": "small",
   "groqApiKey": "",
   "recordingMode": "toggle",
-  "hotkey": "CmdOrCtrl+Shift+D"
+  "hotkey": "CmdOrCtrl+Shift+Space"
 }
 ```
 
-## Dependencies
-
-### Rust (Backend)
-- `tauri` -- app framework
-- `cpal` -- cross-platform audio capture
-- `enigo` -- simulated keyboard input
-- `reqwest` -- HTTP client (Groq API + model downloads)
-- `serde` / `serde_json` -- settings serialization
-- `hound` -- WAV file writing
-
-### Frontend
-- Vite -- build tooling
-- TypeScript -- type-safe frontend code
-- Tauri API (`@tauri-apps/api`) -- IPC with Rust backend
-
-### External
-- whisper.cpp -- pre-built sidecar binary (bundled)
-- Groq Whisper API -- cloud transcription
-
 ## Platform Support
 
-- **macOS:** arm64 (Apple Silicon) and x86_64 (Intel)
-- **Windows:** x86_64
+- Linux (primary development target)
+- macOS
+- Windows
 
 ## Out of Scope
 
-- Transcription history or storage
-- User accounts or authentication
-- Cloud sync
-- Multiple language support (English only for v1)
-- Linux support
-- LLM-based text processing
-- Streaming/real-time transcription (batch only)
+- Transcription history and sync
+- Accounts/authentication
+- LLM rewriting of output text
+- Real-time/streaming transcription

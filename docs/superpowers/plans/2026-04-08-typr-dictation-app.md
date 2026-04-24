@@ -1,12 +1,14 @@
 # Humm Dictation App Implementation Plan
 
+> Status note (2026-04): This document is a historical implementation plan. For current commands, runtime behavior, and architecture details, use `CLAUDE.md` as source of truth.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Build a minimal cross-platform dictation app that captures audio via global hotkey, transcribes via local whisper.cpp or Groq cloud API, and auto-pastes the result.
 
 **Architecture:** Tauri v2 app with Rust backend handling audio capture, transcription routing, text cleanup, and auto-paste. Frontend is Vite + vanilla TypeScript showing a single settings page with recording status. whisper.cpp runs as a bundled sidecar binary.
 
-**Tech Stack:** Tauri v2, Rust, Vite, vanilla TypeScript, whisper.cpp (sidecar), cpal, enigo, reqwest, hound
+**Tech Stack:** Tauri v2, Rust, Vite, vanilla TypeScript, whisper.cpp (sidecar), cpal, reqwest, hound
 
 ---
 
@@ -50,7 +52,7 @@ Humm/
 ### Task 1: Project Scaffolding
 
 **Files:**
-- Create: entire project structure via `npm create tauri-app`
+- Create: entire project structure via `pnpm create tauri-app`
 - Modify: `src-tauri/Cargo.toml` (add dependencies)
 - Modify: `src-tauri/tauri.conf.json` (app config)
 - Modify: `package.json` (add dev dependencies)
@@ -61,7 +63,7 @@ Humm/
 cd /Users/albertbakhoj/Desktop
 rm -rf Humm/implementationplan.md
 cd Humm
-npm create tauri-app@latest . -- --template vanilla-ts --manager npm
+pnpm create tauri-app@latest . -- --template vanilla-ts --manager pnpm
 ```
 
 If prompted, accept defaults. This creates the Vite + vanilla TS + Tauri v2 project.
@@ -89,7 +91,7 @@ dirs = "6"
 
 ```bash
 cd /Users/albertbakhoj/Desktop/Humm
-npm install @tauri-apps/api @tauri-apps/plugin-global-shortcut @tauri-apps/plugin-shell
+pnpm add @tauri-apps/api @tauri-apps/plugin-global-shortcut @tauri-apps/plugin-shell
 ```
 
 - [ ] **Step 4: Configure tauri.conf.json**
@@ -168,7 +170,7 @@ pub mod downloader;
 
 ```bash
 cd /Users/albertbakhoj/Desktop/Humm
-npm run tauri dev
+pnpm tauri dev
 ```
 
 Verify the default Tauri window opens. Close it. Then:
@@ -226,7 +228,7 @@ impl Default for Settings {
             whisper_model: "small".to_string(),
             groq_api_key: String::new(),
             recording_mode: "toggle".to_string(),
-            hotkey: "CmdOrCtrl+Shift+D".to_string(),
+            hotkey: "CmdOrCtrl+Shift+Space".to_string(),
         }
     }
 }
@@ -265,7 +267,7 @@ mod tests {
         assert_eq!(settings.whisper_model, "small");
         assert_eq!(settings.groq_api_key, "");
         assert_eq!(settings.recording_mode, "toggle");
-        assert_eq!(settings.hotkey, "CmdOrCtrl+Shift+D");
+        assert_eq!(settings.hotkey, "CmdOrCtrl+Shift+Space");
     }
 
     #[test]
@@ -1891,7 +1893,7 @@ kbd {
 - [ ] **Step 4: Verify the frontend builds**
 
 ```bash
-cd /Users/albertbakhoj/Desktop/Humm && npm run build
+cd /Users/albertbakhoj/Desktop/Humm && pnpm run build
 ```
 
 Expected: Vite builds without errors.
@@ -1914,7 +1916,7 @@ git commit -m "feat: implement single-page settings UI with status indicator"
 - [ ] **Step 1: Run full build**
 
 ```bash
-cd /Users/albertbakhoj/Desktop/Humm && npm run tauri build -- --debug
+cd /Users/albertbakhoj/Desktop/Humm && pnpm tauri build -- --debug
 ```
 
 Expected: builds successfully, creates a debug binary.
@@ -1932,7 +1934,7 @@ Expected: all unit tests pass (settings, cleanup, transcribe_local, recorder).
 Launch the debug build:
 
 ```bash
-cd /Users/albertbakhoj/Desktop/Humm && npm run tauri dev
+cd /Users/albertbakhoj/Desktop/Humm && pnpm tauri dev
 ```
 
 Verify:
@@ -1972,7 +1974,7 @@ rm -f src/assets/* public/*
 - [ ] **Step 2: Verify final build**
 
 ```bash
-cd /Users/albertbakhoj/Desktop/Humm && npm run tauri dev
+cd /Users/albertbakhoj/Desktop/Humm && pnpm tauri dev
 ```
 
 Verify everything still works after cleanup.

@@ -46,6 +46,7 @@ pub struct AudioRecorder {
     stream: Option<SendStream>,
     source_sample_rate: u32,
     source_channels: u16,
+    pub start_time: Option<std::time::Instant>,
 }
 
 impl AudioRecorder {
@@ -55,6 +56,7 @@ impl AudioRecorder {
             stream: None,
             source_sample_rate: 48000,
             source_channels: 1,
+            start_time: None,
         }
     }
 
@@ -110,11 +112,18 @@ impl AudioRecorder {
 
         stream.play().map_err(|e| e.to_string())?;
         self.stream = Some(SendStream(stream));
+        self.start_time = Some(std::time::Instant::now());
         println!("[Humm] Audio recording started");
         Ok(())
     }
 
     pub fn stop_and_save(&mut self, output_path: &PathBuf) -> Result<PathBuf, String> {
+        // If WASAPI hasn't delivered its first buffer yet, give it up to 50ms.
+        if let Some(t) = self.start_time {
+            if t.elapsed() < std::time::Duration::from_millis(50) {
+                std::thread::sleep(std::time::Duration::from_millis(50) - t.elapsed());
+            }
+        }
         self.stream = None; // Drop stops the stream
         println!("[Humm] Audio recording stopped");
 

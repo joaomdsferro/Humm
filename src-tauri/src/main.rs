@@ -3,7 +3,7 @@
 use std::path::PathBuf;
 use std::sync::Mutex;
 use tauri::{Manager, State, WebviewUrl, WebviewWindowBuilder};
-use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
+use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutEvent, ShortcutState};
 
 use humm_lib::audio;
 use humm_lib::downloader;
@@ -15,6 +15,7 @@ struct AppState {
     recorder: Recorder,
     settings: Mutex<Settings>,
     app_dir: PathBuf,
+    http_client: reqwest::Client,
 }
 
 fn get_app_dir() -> PathBuf {
@@ -87,7 +88,7 @@ async fn do_toggle_recording(
             let settings = state.settings.lock().unwrap().clone();
             let result = state
                 .recorder
-                .stop_and_transcribe(app, &settings, &state.app_dir)
+                .stop_and_transcribe(app, &settings, &state.app_dir, &state.http_client)
                 .await?;
             Ok(result)
         }
@@ -95,6 +96,97 @@ async fn do_toggle_recording(
             Err("Currently transcribing, please wait".to_string())
         }
     }
+}
+
+fn handle_shortcut(app: &tauri::AppHandle, _shortcut: &Shortcut, event: ShortcutEvent) {
+    let app = app.clone();
+    let state = app.state::<AppState>();
+    let mode = state.settings.lock().unwrap().recording_mode.clone();
+    println!("[Humm] Hotkey event: {:?} state={:?}", _shortcut, event.state);
+
+    match event.state {
+        ShortcutState::Pressed => {
+            tauri::async_runtime::spawn(async move {
+                let state = app.state::<AppState>();
+                match mode.as_str() {
+                    "toggle" => {
+                        println!("[Humm] Toggle mode: calling do_toggle_recording");
+                        match do_toggle_recording(&app, state.inner()).await {
+                            Ok(result) => println!("[Humm] Toggle result: {}", result),
+                            Err(e) => eprintln!("[Humm] Toggle error: {}", e),
+                        }
+                    }
+                    "push-to-talk" => {
+                        let current = state.recorder.get_state();
+                        println!("[Humm] PTT mode, current state: {:?}", current);
+                        if current == RecordingState::Ready {
+                            let mic = state.settings.lock().unwrap().microphone.clone();
+                            match state.recorder.start_recording(&app, &mic) {
+                                Ok(_) => println!("[Humm] Recording started"),
+                                Err(e) => eprintln!("[Humm] Start recording error: {}", e),
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            });
+        }
+        ShortcutState::Released => {
+            if mode == "push-to-talk" {
+                tauri::async_runtime::spawn(async move {
+                    let state = app.state::<AppState>();
+                    // Normal case: already Recording, proceed immediately.
+                    // Race case: key released during stream init — wait once for it to finish.
+                    if state.recorder.get_state() != RecordingState::Recording {
+                        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                        if state.recorder.get_state() != RecordingState::Recording {
+                            return;
+                        }
+                    }
+                    let settings = state.settings.lock().unwrap().clone();
+                    match state
+                        .recorder
+                        .stop_and_transcribe(&app, &settings, &state.app_dir, &state.http_client)
+                        .await
+                    {
+                        Ok(result) => println!("[Humm] Transcription: {}", result),
+                        Err(e) => eprintln!("[Humm] Transcription error: {}", e),
+                    }
+                });
+            }
+        }
+    }
+}
+
+fn register_hotkey(app: &tauri::AppHandle, hotkey: &str) -> Result<(), String> {
+    println!("[Humm] Registering global shortcut: {}", hotkey);
+    app.global_shortcut()
+        .on_shortcut(hotkey, handle_shortcut)
+        .map_err(|e| format!("Failed to register hotkey '{}': {}", hotkey, e))
+}
+
+#[tauri::command]
+fn update_hotkey(
+    app: tauri::AppHandle,
+    state: State<AppState>,
+    new_hotkey: String,
+) -> Result<(), String> {
+    let old_hotkey = state.settings.lock().unwrap().hotkey.clone();
+
+    if let Err(e) = app.global_shortcut().unregister(old_hotkey.as_str()) {
+        eprintln!("[Humm] Warning: failed to unregister '{}': {}", old_hotkey, e);
+    }
+
+    if let Err(e) = register_hotkey(&app, &new_hotkey) {
+        let _ = register_hotkey(&app, &old_hotkey);
+        return Err(e);
+    }
+
+    let mut settings = state.settings.lock().unwrap();
+    settings.hotkey = new_hotkey;
+    settings.save(&state.app_dir)?;
+    println!("[Humm] Hotkey updated successfully");
+    Ok(())
 }
 
 fn main() {
@@ -109,6 +201,7 @@ fn main() {
             recorder: Recorder::new(),
             settings: Mutex::new(settings),
             app_dir,
+            http_client: reqwest::Client::new(),
         })
         .invoke_handler(tauri::generate_handler![
             get_settings,
@@ -118,6 +211,7 @@ fn main() {
             check_model_downloaded,
             download_model,
             toggle_recording,
+            update_hotkey,
         ])
         .setup(move |app| {
             // Overlay window stays mapped for the entire app lifetime so it
@@ -198,76 +292,9 @@ fn main() {
                 Err(e) => eprintln!("[Humm] Failed to create overlay: {}", e),
             }
 
-            let handle = app.handle().clone();
-
-            println!("[Humm] Registering global shortcut: {}", initial_hotkey);
-
-            match app.global_shortcut().on_shortcut(
-                initial_hotkey.as_str(),
-                move |_app, shortcut, event| {
-                    println!("[Humm] Hotkey event: {:?} state={:?}", shortcut, event.state);
-                    let handle = handle.clone();
-                    let state = handle.state::<AppState>();
-                    let mode = state.settings.lock().unwrap().recording_mode.clone();
-                    println!("[Humm] Recording mode: {}", mode);
-
-                    match event.state {
-                        ShortcutState::Pressed => {
-                            tauri::async_runtime::spawn(async move {
-                                let state = handle.state::<AppState>();
-                                match mode.as_str() {
-                                    "toggle" => {
-                                        println!("[Humm] Toggle mode: calling do_toggle_recording");
-                                        match do_toggle_recording(&handle, state.inner()).await {
-                                            Ok(result) => println!("[Humm] Toggle result: {}", result),
-                                            Err(e) => eprintln!("[Humm] Toggle error: {}", e),
-                                        }
-                                    }
-                                    "push-to-talk" => {
-                                        let current = state.recorder.get_state();
-                                        println!("[Humm] PTT mode, current state: {:?}", current);
-                                        if current == RecordingState::Ready {
-                                            let mic = state
-                                                .settings
-                                                .lock()
-                                                .unwrap()
-                                                .microphone
-                                                .clone();
-                                            match state.recorder.start_recording(&handle, &mic) {
-                                                Ok(_) => println!("[Humm] Recording started"),
-                                                Err(e) => eprintln!("[Humm] Start recording error: {}", e),
-                                            }
-                                        }
-                                    }
-                                    _ => {}
-                                }
-                            });
-                        }
-                        ShortcutState::Released => {
-                            if mode == "push-to-talk" {
-                                tauri::async_runtime::spawn(async move {
-                                    let state = handle.state::<AppState>();
-                                    let current = state.recorder.get_state();
-                                    if current == RecordingState::Recording {
-                                        let settings =
-                                            state.settings.lock().unwrap().clone();
-                                        match state.recorder.stop_and_transcribe(
-                                            &handle,
-                                            &settings,
-                                            &state.app_dir,
-                                        ).await {
-                                            Ok(result) => println!("[Humm] Transcription: {}", result),
-                                            Err(e) => eprintln!("[Humm] Transcription error: {}", e),
-                                        }
-                                    }
-                                });
-                            }
-                        }
-                    }
-                },
-            ) {
+            match register_hotkey(app.handle(), &initial_hotkey) {
                 Ok(_) => println!("[Humm] Global shortcut registered successfully"),
-                Err(e) => eprintln!("[Humm] ERROR: Failed to register global shortcut: {}", e),
+                Err(e) => eprintln!("[Humm] ERROR: {}", e),
             }
 
             Ok(())

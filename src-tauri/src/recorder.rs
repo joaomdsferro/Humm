@@ -1,6 +1,8 @@
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
-use tauri::{AppHandle, Emitter, Manager, PhysicalPosition};
+use tauri::{AppHandle, Emitter, Manager};
+#[cfg(target_os = "linux")]
+use tauri::PhysicalPosition;
 
 use crate::audio::AudioRecorder;
 use crate::cleanup::cleanup_text;
@@ -110,6 +112,7 @@ impl Recorder {
         app: &AppHandle,
         settings: &Settings,
         app_dir: &PathBuf,
+        http_client: &reqwest::Client,
     ) -> Result<String, String> {
         // Stop recording
         {
@@ -134,10 +137,10 @@ impl Recorder {
         let raw_text = match settings.engine.as_str() {
             "local" => {
                 let model_path = app_dir.join(transcribe_local::model_filename(&settings.whisper_model));
-                transcribe_local::transcribe_local(app, &model_path, &temp_path).await?
+                transcribe_local::transcribe_local(app, &model_path, &temp_path, &settings.language).await?
             }
             "cloud" => {
-                transcribe_groq::transcribe_groq(&settings.groq_api_key, &temp_path).await?
+                transcribe_groq::transcribe_groq(http_client, &settings.groq_api_key, &temp_path, &settings.language).await?
             }
             _ => return Err(format!("Unknown engine: {}", settings.engine)),
         };

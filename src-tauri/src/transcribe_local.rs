@@ -6,6 +6,7 @@ pub async fn transcribe_local(
     app: &AppHandle,
     model_path: &PathBuf,
     audio_path: &PathBuf,
+    language: &str,
 ) -> Result<String, String> {
     if !model_path.exists() {
         return Err("Whisper model not found. Please download a model first.".to_string());
@@ -13,19 +14,20 @@ pub async fn transcribe_local(
 
     println!("[Humm] Running whisper.cpp sidecar with model {:?}", model_path);
 
+    let mut args = vec![
+        "-m", model_path.to_str().unwrap(),
+        "-f", audio_path.to_str().unwrap(),
+        "--no-timestamps",
+    ];
+    if language != "auto" {
+        args.extend_from_slice(&["-l", language]);
+    }
+
     let output = app
         .shell()
         .sidecar("whisper-cpp")
         .map_err(|e| format!("Failed to create sidecar command: {}", e))?
-        .args([
-            "-m",
-            model_path.to_str().unwrap(),
-            "-f",
-            audio_path.to_str().unwrap(),
-            "--no-timestamps",
-            "-l",
-            "en",
-        ])
+        .args(&args)
         .output()
         .await
         .map_err(|e| format!("Failed to run whisper.cpp: {}", e))?;

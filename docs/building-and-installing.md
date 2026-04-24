@@ -8,14 +8,13 @@
 npm run tauri build
 ```
 
-Takes ~5–10 minutes on first run. Output lands in `src-tauri/target/release/bundle/`.
+Takes ~5–10 minutes on first run. The binary is output to `src-tauri/target/release/Humm`.
 
-### 2. Install the AppImage
+### 2. Symlink the binary (one-time)
 
 ```bash
-chmod +x src-tauri/target/release/bundle/appimage/Humm_*.AppImage
 mkdir -p ~/.local/bin
-cp src-tauri/target/release/bundle/appimage/Humm_*.AppImage ~/.local/bin/humm.AppImage
+ln -sf /home/joaomdsferro/Documents/Github/Humm/src-tauri/target/release/Humm ~/.local/bin/humm
 ```
 
 ### 3. Register in the app launcher (one-time)
@@ -24,7 +23,7 @@ cp src-tauri/target/release/bundle/appimage/Humm_*.AppImage ~/.local/bin/humm.Ap
 cat > ~/.local/share/applications/humm.desktop << 'EOF'
 [Desktop Entry]
 Name=Humm
-Exec=/home/joaomdsferro/.local/bin/humm.AppImage
+Exec=/home/joaomdsferro/.local/bin/humm
 Icon=humm
 Type=Application
 Categories=Utility;AudioVideo;
@@ -38,8 +37,10 @@ Humm will now appear in the CachyOS app launcher.
 ## Rebuilding after code changes
 
 ```bash
-npm run tauri build && cp src-tauri/target/release/bundle/appimage/Humm_*.AppImage ~/.local/bin/humm.AppImage
+npm run tauri build
 ```
+
+That's it. The symlink always points to the latest binary — no copy step needed.
 
 Subsequent builds are faster (incremental Rust compilation).
 
@@ -47,6 +48,6 @@ Subsequent builds are faster (incremental Rust compilation).
 
 ## Notes
 
-- The whisper-cpp binary must be present at `src-tauri/binaries/whisper-cpp-x86_64-unknown-linux-gnu` before building — it gets bundled into the AppImage.
-- The `.desktop` file only needs to be created once. The `Exec` path points to a fixed location (`~/.local/bin/humm.AppImage`), so rebuilds that copy to the same path are picked up automatically without touching the `.desktop` file.
+- The whisper-cpp binary must be present at `src-tauri/binaries/whisper-cpp-x86_64-unknown-linux-gnu` before building.
+- The AppImage bundle target requires `linuxdeploy` (`paru -S linuxdeploy-bin`). It's not needed for this setup since we use the raw binary directly.
 - Avoid `debtap` (`.deb` → Arch package conversion) for a dev workflow — it adds unnecessary steps on every rebuild.

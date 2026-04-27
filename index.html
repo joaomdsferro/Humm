@@ -76,7 +76,17 @@
                 <span class="label-hint">Language spoken during recording</span>
               </div>
               <div class="setting-control">
-                <select id="language-select"></select>
+                <div id="language-combobox" class="combobox" tabindex="0" role="combobox" aria-haspopup="listbox" aria-expanded="false">
+                  <button id="language-trigger" class="combobox-trigger" type="button" aria-label="Choose language">
+                    <span id="language-flag" class="lang-flag" aria-hidden="true"></span>
+                    <span id="language-name" class="lang-name">Auto-detect</span>
+                  </button>
+                  <div id="language-dropdown" class="combobox-dropdown hidden" role="dialog" aria-label="Language search">
+                    <input id="language-search" class="combobox-search" type="text" placeholder="Search language" autocomplete="off" />
+                    <ul id="language-list" class="combobox-list" role="listbox" aria-label="Languages"></ul>
+                  </div>
+                </div>
+                <select id="language-select" class="native-hidden-select" tabindex="-1" aria-hidden="true"></select>
               </div>
             </div>
           </div>

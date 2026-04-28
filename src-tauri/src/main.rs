@@ -213,6 +213,13 @@ fn main() {
             toggle_recording,
             update_hotkey,
         ])
+        .on_window_event(|window, event| {
+            if window.label() == "main" {
+                if let tauri::WindowEvent::Destroyed = event {
+                    window.app_handle().exit(0);
+                }
+            }
+        })
         .setup(move |app| {
             // Overlay window stays mapped for the entire app lifetime so it
             // never steals focus. Visual state is controlled via CSS opacity.

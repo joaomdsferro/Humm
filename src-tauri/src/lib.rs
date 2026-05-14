@@ -6,6 +6,10 @@ pub mod cleanup;
 pub mod paste;
 pub mod recorder;
 pub mod downloader;
+pub mod selection;
+pub mod tts_local;
+pub mod tts_cloud;
+pub mod speaker;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {

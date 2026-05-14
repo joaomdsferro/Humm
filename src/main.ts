@@ -10,6 +10,26 @@ interface Settings {
   recordingMode: string;
   hotkey: string;
   language: string;
+  ttsEngine: string;
+  piperVoice: string;
+  edgeVoice: string;
+  ttsRate: number;
+  readHotkey: string;
+}
+
+interface PiperVoice {
+  id: string;
+  label: string;
+  lang: string;
+  quality: string;
+  hf_path: string;
+}
+
+interface EdgeVoiceLite {
+  short_name: string;
+  locale: string;
+  gender: string;
+  friendly_name: string;
 }
 
 interface Language {
@@ -251,6 +271,20 @@ const modePtt = document.getElementById("mode-ptt")!;
 const hotkeyText = document.getElementById("hotkey-text")!;
 const hotkeyChangeBtn = document.getElementById("hotkey-change-btn")!;
 
+const ttsLocal = document.getElementById("tts-local")!;
+const ttsCloud = document.getElementById("tts-cloud")!;
+const ttsLocalSettings = document.getElementById("tts-local-settings")!;
+const ttsCloudSettings = document.getElementById("tts-cloud-settings")!;
+const piperVoiceSelect = document.getElementById("piper-voice-select") as HTMLSelectElement;
+const piperDownloadBtn = document.getElementById("piper-download-btn") as HTMLButtonElement;
+const piperDownloadProgress = document.getElementById("piper-download-progress")!;
+const piperProgressFill = document.getElementById("piper-progress-fill")!;
+const edgeVoiceSelect = document.getElementById("edge-voice-select") as HTMLSelectElement;
+const ttsRate = document.getElementById("tts-rate") as HTMLInputElement;
+const ttsRateValue = document.getElementById("tts-rate-value")!;
+const readHotkeyText = document.getElementById("read-hotkey-text")!;
+const readHotkeyChangeBtn = document.getElementById("read-hotkey-change-btn")!;
+
 // Section navigation
 const navItems = document.querySelectorAll(".nav-item");
 const sections = document.querySelectorAll(".content-section");
@@ -316,6 +350,83 @@ async function loadSettings() {
 
   // Hotkey
   hotkeyText.textContent = formatHotkey(currentSettings.hotkey);
+
+  // TTS section
+  await loadTtsSettings();
+}
+
+async function loadTtsSettings() {
+  setTtsEngine(currentSettings.ttsEngine || "cloud");
+
+  // Piper voices
+  const piperVoices = await invoke<PiperVoice[]>("list_piper_voices");
+  piperVoiceSelect.innerHTML = "";
+  piperVoices.forEach((v) => {
+    const opt = document.createElement("option");
+    opt.value = v.id;
+    opt.textContent = v.label;
+    piperVoiceSelect.appendChild(opt);
+  });
+  if (currentSettings.piperVoice) piperVoiceSelect.value = currentSettings.piperVoice;
+  await refreshPiperDownloadState();
+
+  // Edge voices — fetch live list, fall back to current setting if it fails.
+  edgeVoiceSelect.innerHTML = "";
+  try {
+    const voices = await invoke<EdgeVoiceLite[]>("list_edge_voices");
+    const filtered = voices.filter((v) => /Neural$/.test(v.short_name));
+    filtered.sort((a, b) => {
+      if (a.locale !== b.locale) return a.locale.localeCompare(b.locale);
+      return a.short_name.localeCompare(b.short_name);
+    });
+    filtered.forEach((v) => {
+      const opt = document.createElement("option");
+      opt.value = v.short_name;
+      const name = v.short_name.split("-").pop()?.replace(/Neural$/, "") ?? v.short_name;
+      opt.textContent = `${v.locale} — ${name} (${v.gender})`;
+      edgeVoiceSelect.appendChild(opt);
+    });
+  } catch (e) {
+    console.error("Failed to load Edge voices:", e);
+    const fallback = currentSettings.edgeVoice || "en-US-AvaNeural";
+    const opt = document.createElement("option");
+    opt.value = fallback;
+    opt.textContent = fallback;
+    edgeVoiceSelect.appendChild(opt);
+  }
+  if (currentSettings.edgeVoice) {
+    if (![...edgeVoiceSelect.options].some((o) => o.value === currentSettings.edgeVoice)) {
+      const opt = document.createElement("option");
+      opt.value = currentSettings.edgeVoice;
+      opt.textContent = currentSettings.edgeVoice;
+      edgeVoiceSelect.appendChild(opt);
+    }
+    edgeVoiceSelect.value = currentSettings.edgeVoice;
+  }
+
+  // Rate
+  ttsRate.value = String(currentSettings.ttsRate ?? 0);
+  ttsRateValue.textContent = ttsRate.value;
+
+  // Read hotkey
+  readHotkeyText.textContent = formatHotkey(currentSettings.readHotkey || "CmdOrCtrl+Shift+R");
+}
+
+function setTtsEngine(engine: string) {
+  currentSettings.ttsEngine = engine;
+  ttsLocal.classList.toggle("active", engine === "local");
+  ttsCloud.classList.toggle("active", engine === "cloud");
+  ttsLocalSettings.classList.toggle("hidden", engine !== "local");
+  ttsCloudSettings.classList.toggle("hidden", engine !== "cloud");
+}
+
+async function refreshPiperDownloadState() {
+  if (!piperVoiceSelect.value) return;
+  const downloaded = await invoke<boolean>("check_piper_voice_downloaded", {
+    voiceId: piperVoiceSelect.value,
+  });
+  piperDownloadBtn.textContent = downloaded ? "✓" : "Download";
+  piperDownloadBtn.disabled = downloaded;
 }
 
 function setEngine(engine: string) {
@@ -345,6 +456,9 @@ async function saveSettings() {
   currentSettings.whisperModel = modelSelect.value;
   currentSettings.groqApiKey = groqKey.value;
   currentSettings.language = languageSelect.value;
+  currentSettings.piperVoice = piperVoiceSelect.value;
+  currentSettings.edgeVoice = edgeVoiceSelect.value;
+  currentSettings.ttsRate = parseInt(ttsRate.value, 10);
   await invoke("save_settings", { settings: currentSettings });
 }
 
@@ -499,8 +613,68 @@ listen<string>("recording-state", (event) => {
 // Listen for download progress
 listen<DownloadProgress>("download-progress", (event) => {
   const { percent } = event.payload;
-  progressFill.style.width = `${percent}%`;
+  // Both whisper model and piper voice use this event. Update whichever
+  // progress bar is currently visible.
+  if (!piperDownloadProgress.classList.contains("hidden")) {
+    piperProgressFill.style.width = `${percent}%`;
+  } else {
+    progressFill.style.width = `${percent}%`;
+  }
 });
+
+listen<string>("speaker-state", (event) => {
+  const state = event.payload;
+  statusDot.className = "";
+  if (state === "Speaking") {
+    statusDot.classList.add("recording");
+    statusText.textContent = "Speaking...";
+  } else if (state === "Synthesizing") {
+    statusDot.classList.add("transcribing");
+    statusText.textContent = "Synthesizing...";
+  } else {
+    statusDot.classList.add("ready");
+    statusText.textContent = "Ready";
+  }
+});
+
+// TTS engine toggle
+ttsLocal.addEventListener("click", () => {
+  setTtsEngine("local");
+  saveSettings();
+});
+ttsCloud.addEventListener("click", () => {
+  setTtsEngine("cloud");
+  saveSettings();
+});
+
+piperVoiceSelect.addEventListener("change", async () => {
+  await refreshPiperDownloadState();
+  saveSettings();
+});
+
+piperDownloadBtn.addEventListener("click", async () => {
+  piperDownloadBtn.disabled = true;
+  piperDownloadProgress.classList.remove("hidden");
+  piperProgressFill.style.width = "0%";
+  try {
+    await invoke("download_piper_voice", { voiceId: piperVoiceSelect.value });
+    piperDownloadBtn.textContent = "✓";
+  } catch (e) {
+    piperDownloadBtn.textContent = "Retry";
+    piperDownloadBtn.disabled = false;
+    console.error("Voice download failed:", e);
+  }
+  piperDownloadProgress.classList.add("hidden");
+});
+
+edgeVoiceSelect.addEventListener("change", () => saveSettings());
+
+ttsRate.addEventListener("input", () => {
+  ttsRateValue.textContent = ttsRate.value;
+});
+ttsRate.addEventListener("change", () => saveSettings());
+
+readHotkeyChangeBtn.addEventListener("click", () => captureReadHotkey());
 
 // Hotkey utilities
 const isMac = navigator.platform.toUpperCase().includes("MAC");
@@ -607,6 +781,62 @@ async function applyHotkey(accelerator: string) {
     hotkeyChangeBtn.textContent = "Cancel";
     capturing = true;
     setTimeout(() => stopCapture?.(), 2000);
+  }
+}
+
+let readCapturing = false;
+let stopReadCapture: (() => void) | null = null;
+
+function captureReadHotkey() {
+  if (readCapturing) {
+    stopReadCapture?.();
+    return;
+  }
+  readCapturing = true;
+  readHotkeyText.textContent = "Press shortcut…";
+  readHotkeyText.classList.add("capturing");
+  readHotkeyChangeBtn.textContent = "Cancel";
+
+  function onKeyDown(e: KeyboardEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.key === "Escape") {
+      stopReadCapture?.();
+      return;
+    }
+    const accelerator = keyEventToAccelerator(e);
+    if (!accelerator) return;
+    document.removeEventListener("keydown", onKeyDown, true);
+    stopReadCapture = null;
+    readCapturing = false;
+    applyReadHotkey(accelerator);
+  }
+  document.addEventListener("keydown", onKeyDown, true);
+
+  stopReadCapture = () => {
+    document.removeEventListener("keydown", onKeyDown, true);
+    readCapturing = false;
+    stopReadCapture = null;
+    readHotkeyText.textContent = formatHotkey(currentSettings.readHotkey);
+    readHotkeyText.classList.remove("capturing");
+    readHotkeyChangeBtn.textContent = "Change";
+  };
+}
+
+async function applyReadHotkey(accelerator: string) {
+  readHotkeyText.textContent = formatHotkey(accelerator);
+  readHotkeyText.classList.remove("capturing");
+  readHotkeyChangeBtn.textContent = "Change";
+  try {
+    await invoke("update_read_hotkey", { newHotkey: accelerator });
+    currentSettings.readHotkey = accelerator;
+  } catch (e) {
+    console.error("Failed to set read hotkey:", e);
+    readHotkeyText.textContent = "Failed — try another";
+    readHotkeyText.classList.add("capturing");
+    readHotkeyChangeBtn.textContent = "Cancel";
+    readCapturing = true;
+    setTimeout(() => stopReadCapture?.(), 2000);
   }
 }
 

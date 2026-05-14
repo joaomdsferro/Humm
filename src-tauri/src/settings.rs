@@ -14,7 +14,22 @@ pub struct Settings {
     pub recording_mode: String,
     pub hotkey: String,
     pub language: String,
+    #[serde(rename = "ttsEngine", default = "default_tts_engine")]
+    pub tts_engine: String,
+    #[serde(rename = "piperVoice", default = "default_piper_voice")]
+    pub piper_voice: String,
+    #[serde(rename = "edgeVoice", default = "default_edge_voice")]
+    pub edge_voice: String,
+    #[serde(rename = "ttsRate", default)]
+    pub tts_rate: i32,
+    #[serde(rename = "readHotkey", default = "default_read_hotkey")]
+    pub read_hotkey: String,
 }
+
+fn default_tts_engine() -> String { "cloud".to_string() }
+fn default_piper_voice() -> String { "en_US-amy-medium".to_string() }
+fn default_edge_voice() -> String { "en-US-AvaNeural".to_string() }
+fn default_read_hotkey() -> String { "CmdOrCtrl+Shift+R".to_string() }
 
 impl Default for Settings {
     fn default() -> Self {
@@ -26,6 +41,11 @@ impl Default for Settings {
             recording_mode: "toggle".to_string(),
             hotkey: "CmdOrCtrl+Shift+Space".to_string(),
             language: "auto".to_string(),
+            tts_engine: default_tts_engine(),
+            piper_voice: default_piper_voice(),
+            edge_voice: default_edge_voice(),
+            tts_rate: 0,
+            read_hotkey: default_read_hotkey(),
         }
     }
 }

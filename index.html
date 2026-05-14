@@ -48,6 +48,13 @@
             </svg>
             Recording
           </a>
+          <a class="nav-item" data-section="read">
+            <svg class="nav-icon" width="16" height="16" viewBox="0 0 16 16" fill="none">
+              <path d="M3 4h7M3 8h7M3 12h5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+              <path d="M12 5v6M14 7v2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+            </svg>
+            Read Aloud
+          </a>
         </nav>
         <div class="sidebar-footer">
           <span class="version-text">v0.1.1</span>
@@ -169,6 +176,75 @@
                 <div class="hotkey-control">
                   <kbd id="hotkey-text">Cmd+Shift+Space</kbd>
                   <button id="hotkey-change-btn" class="btn-secondary">Change</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section id="section-read" class="content-section">
+          <div class="section-header">
+            <h2 class="section-title">Read Aloud</h2>
+            <p class="section-desc">Speak selected or copied text. Press the hotkey again to stop.</p>
+          </div>
+          <div class="settings-list">
+            <div class="setting-row">
+              <div class="setting-label">
+                <span class="label-text">TTS Engine</span>
+                <span class="label-hint">Local runs Piper on-device, Cloud uses Microsoft Edge (free)</span>
+              </div>
+              <div class="setting-control">
+                <div class="toggle-group">
+                  <button id="tts-local" class="toggle-btn">Local Piper</button>
+                  <button id="tts-cloud" class="toggle-btn active">Edge Cloud</button>
+                </div>
+              </div>
+            </div>
+            <div class="setting-row" id="tts-local-settings">
+              <div class="setting-label">
+                <span class="label-text">Piper Voice</span>
+                <span class="label-hint">Requires the <code>piper</code> binary on PATH</span>
+              </div>
+              <div class="setting-control">
+                <div class="model-row">
+                  <select id="piper-voice-select"></select>
+                  <button id="piper-download-btn" class="btn-primary">Download</button>
+                </div>
+              </div>
+            </div>
+            <div id="piper-download-progress" class="hidden">
+              <div id="piper-progress-bar"><div id="piper-progress-fill"></div></div>
+            </div>
+            <div class="setting-row" id="tts-cloud-settings">
+              <div class="setting-label">
+                <span class="label-text">Edge Voice</span>
+                <span class="label-hint">Microsoft neural voices — no API key required</span>
+              </div>
+              <div class="setting-control">
+                <select id="edge-voice-select"></select>
+              </div>
+            </div>
+            <div class="setting-row">
+              <div class="setting-label">
+                <span class="label-text">Speech Rate</span>
+                <span class="label-hint">Negative = slower, positive = faster</span>
+              </div>
+              <div class="setting-control">
+                <div class="rate-row">
+                  <input type="range" id="tts-rate" min="-50" max="50" step="5" value="0" />
+                  <span id="tts-rate-value">0</span>
+                </div>
+              </div>
+            </div>
+            <div class="setting-row">
+              <div class="setting-label">
+                <span class="label-text">Read Hotkey</span>
+                <span class="label-hint">Reads current selection (Linux) or clipboard</span>
+              </div>
+              <div class="setting-control">
+                <div class="hotkey-control">
+                  <kbd id="read-hotkey-text">Cmd+Shift+R</kbd>
+                  <button id="read-hotkey-change-btn" class="btn-secondary">Change</button>
                 </div>
               </div>
             </div>

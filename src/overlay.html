@@ -74,6 +74,31 @@
         animation: spin 0.9s linear infinite;
       }
 
+      .pill.speaking {
+        opacity: 1;
+        background: rgba(40, 110, 220, 0.96);
+        border-color: rgba(140, 180, 255, 0.5);
+        color: #fff;
+        animation: pulse 1.2s ease-in-out infinite;
+      }
+      .pill.speaking .dot {
+        background: #fff;
+        box-shadow: 0 0 8px rgba(255, 255, 255, 0.9);
+      }
+
+      .pill.synthesizing {
+        opacity: 1;
+        background: rgba(94, 106, 210, 0.96);
+        border-color: rgba(160, 175, 255, 0.5);
+        color: #fff;
+      }
+      .pill.synthesizing .dot {
+        background: transparent;
+        border: 2px solid #fff;
+        border-top-color: transparent;
+        animation: spin 0.9s linear infinite;
+      }
+
       @keyframes pulse {
         0%, 100% { opacity: 1; }
         50% { opacity: 0.78; }
@@ -100,6 +125,12 @@
         } else if (state === 'transcribing') {
           pill.classList.add('transcribing');
           label.textContent = 'Transcribing';
+        } else if (state === 'speaking') {
+          pill.classList.add('speaking');
+          label.textContent = 'Speaking';
+        } else if (state === 'synthesizing') {
+          pill.classList.add('synthesizing');
+          label.textContent = 'Synthesizing';
         } else {
           label.textContent = 'Ready';
         }

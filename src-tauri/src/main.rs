@@ -9,13 +9,23 @@ use humm_lib::audio;
 use humm_lib::downloader;
 use humm_lib::recorder::{Recorder, RecordingState, OVERLAY_WINDOW_TITLE};
 use humm_lib::settings::Settings;
+use humm_lib::speaker::{Speaker, SpeakerState};
 use humm_lib::transcribe_local;
+use humm_lib::tts_cloud;
+use humm_lib::tts_local;
 
 struct AppState {
     recorder: Recorder,
+    speaker: std::sync::OnceLock<Speaker>,
     settings: Mutex<Settings>,
     app_dir: PathBuf,
     http_client: reqwest::Client,
+}
+
+impl AppState {
+    fn speaker(&self) -> &Speaker {
+        self.speaker.get().expect("Speaker not initialized yet")
+    }
 }
 
 fn get_app_dir() -> PathBuf {
@@ -72,6 +82,62 @@ async fn toggle_recording(
     do_toggle_recording(&app, &state).await
 }
 
+#[tauri::command]
+async fn toggle_read(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
+    do_toggle_read(&app, &state).await
+}
+
+#[tauri::command]
+fn stop_reading(app: tauri::AppHandle, state: State<AppState>) {
+    state.speaker().stop(&app);
+}
+
+#[tauri::command]
+fn get_speaker_state(state: State<AppState>) -> SpeakerState {
+    state.speaker().get_state()
+}
+
+#[tauri::command]
+fn list_piper_voices() -> Vec<tts_local::PiperVoice> {
+    tts_local::voice_catalog()
+}
+
+#[tauri::command]
+fn check_piper_voice_downloaded(state: State<AppState>, voice_id: String) -> bool {
+    tts_local::voice_downloaded(&state.app_dir, &voice_id)
+}
+
+#[tauri::command]
+async fn download_piper_voice(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    voice_id: String,
+) -> Result<(), String> {
+    let app_dir = state.app_dir.clone();
+    tts_local::download_voice(app, app_dir, voice_id).await
+}
+
+#[tauri::command]
+async fn list_edge_voices() -> Result<Vec<tts_cloud::EdgeVoiceLite>, String> {
+    tokio::task::spawn_blocking(tts_cloud::list_voices)
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+async fn do_toggle_read(
+    app: &tauri::AppHandle,
+    state: &AppState,
+) -> Result<String, String> {
+    let settings = state.settings.lock().unwrap().clone();
+    state
+        .speaker()
+        .toggle_read(app, &settings, &state.app_dir)
+        .await
+}
+
 /// Shared logic for toggle recording, used by both the Tauri command and hotkey handler.
 async fn do_toggle_recording(
     app: &tauri::AppHandle,
@@ -98,11 +164,32 @@ async fn do_toggle_recording(
     }
 }
 
-fn handle_shortcut(app: &tauri::AppHandle, _shortcut: &Shortcut, event: ShortcutEvent) {
+fn handle_shortcut(app: &tauri::AppHandle, shortcut: &Shortcut, event: ShortcutEvent) {
     let app = app.clone();
     let state = app.state::<AppState>();
-    let mode = state.settings.lock().unwrap().recording_mode.clone();
-    println!("[Humm] Hotkey event: {:?} state={:?}", _shortcut, event.state);
+    let (record_hk, read_hk, mode) = {
+        let s = state.settings.lock().unwrap();
+        (s.hotkey.clone(), s.read_hotkey.clone(), s.recording_mode.clone())
+    };
+    println!("[Humm] Hotkey event: {:?} state={:?}", shortcut, event.state);
+
+    // Route to TTS toggle if this is the read hotkey (press only).
+    if shortcut_matches(shortcut, &read_hk) {
+        if event.state == ShortcutState::Pressed {
+            tauri::async_runtime::spawn(async move {
+                let state = app.state::<AppState>();
+                match do_toggle_read(&app, state.inner()).await {
+                    Ok(r) => println!("[Humm] Read toggle: {}", r),
+                    Err(e) => eprintln!("[Humm] Read toggle error: {}", e),
+                }
+            });
+        }
+        return;
+    }
+
+    if !shortcut_matches(shortcut, &record_hk) {
+        return;
+    }
 
     match event.state {
         ShortcutState::Pressed => {
@@ -165,6 +252,13 @@ fn register_hotkey(app: &tauri::AppHandle, hotkey: &str) -> Result<(), String> {
         .map_err(|e| format!("Failed to register hotkey '{}': {}", hotkey, e))
 }
 
+fn shortcut_matches(actual: &Shortcut, accelerator: &str) -> bool {
+    match accelerator.parse::<Shortcut>() {
+        Ok(parsed) => &parsed == actual,
+        Err(_) => false,
+    }
+}
+
 #[tauri::command]
 fn update_hotkey(
     app: tauri::AppHandle,
@@ -189,16 +283,42 @@ fn update_hotkey(
     Ok(())
 }
 
+#[tauri::command]
+fn update_read_hotkey(
+    app: tauri::AppHandle,
+    state: State<AppState>,
+    new_hotkey: String,
+) -> Result<(), String> {
+    let old_hotkey = state.settings.lock().unwrap().read_hotkey.clone();
+
+    if let Err(e) = app.global_shortcut().unregister(old_hotkey.as_str()) {
+        eprintln!("[Humm] Warning: failed to unregister read hotkey '{}': {}", old_hotkey, e);
+    }
+
+    if let Err(e) = register_hotkey(&app, &new_hotkey) {
+        let _ = register_hotkey(&app, &old_hotkey);
+        return Err(e);
+    }
+
+    let mut settings = state.settings.lock().unwrap();
+    settings.read_hotkey = new_hotkey;
+    settings.save(&state.app_dir)?;
+    println!("[Humm] Read hotkey updated successfully");
+    Ok(())
+}
+
 fn main() {
     let app_dir = get_app_dir();
     let settings = Settings::load(&app_dir);
     let initial_hotkey = settings.hotkey.clone();
+    let initial_read_hotkey = settings.read_hotkey.clone();
 
     tauri::Builder::default()
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_shell::init())
         .manage(AppState {
             recorder: Recorder::new(),
+            speaker: std::sync::OnceLock::new(),
             settings: Mutex::new(settings),
             app_dir,
             http_client: reqwest::Client::new(),
@@ -212,6 +332,14 @@ fn main() {
             download_model,
             toggle_recording,
             update_hotkey,
+            toggle_read,
+            stop_reading,
+            get_speaker_state,
+            list_piper_voices,
+            check_piper_voice_downloaded,
+            download_piper_voice,
+            list_edge_voices,
+            update_read_hotkey,
         ])
         .on_window_event(|window, event| {
             if window.label() == "main" {
@@ -299,9 +427,19 @@ fn main() {
                 Err(e) => eprintln!("[Humm] Failed to create overlay: {}", e),
             }
 
+            // Speaker needs an AppHandle to emit state events, so create
+            // it now that the app is set up.
+            let state: tauri::State<AppState> = app.state();
+            let _ = state.speaker.set(Speaker::new(app.handle().clone()));
+
             match register_hotkey(app.handle(), &initial_hotkey) {
                 Ok(_) => println!("[Humm] Global shortcut registered successfully"),
                 Err(e) => eprintln!("[Humm] ERROR: {}", e),
+            }
+
+            match register_hotkey(app.handle(), &initial_read_hotkey) {
+                Ok(_) => println!("[Humm] Read hotkey registered: {}", initial_read_hotkey),
+                Err(e) => eprintln!("[Humm] ERROR registering read hotkey: {}", e),
             }
 
             Ok(())

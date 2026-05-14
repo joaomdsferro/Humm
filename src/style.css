@@ -586,6 +586,48 @@ input[type="password"]::placeholder {
   width: 0%;
 }
 
+#piper-download-progress {
+  padding: 0 0 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+#piper-progress-bar {
+  height: 3px;
+  background: var(--surface);
+  border-radius: 2px;
+  overflow: hidden;
+  margin-top: 8px;
+}
+
+#piper-progress-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 2px;
+  transition: width 0.3s ease;
+  width: 0%;
+}
+
+.rate-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  max-width: 280px;
+}
+
+.rate-row input[type="range"] {
+  flex: 1;
+  accent-color: var(--accent);
+}
+
+.rate-row span {
+  min-width: 24px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
 /* ── Kbd ────────────────────────────────────────────── */
 
 kbd {
